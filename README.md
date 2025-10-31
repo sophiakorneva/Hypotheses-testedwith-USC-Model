@@ -1,5 +1,4 @@
-````markdown
-# Ultra-Slow Component Model (USC-Model, Model C⁺)
+# Hypothesis Testing for the Ultra-Slow Component Model (USC-Model)
 
 **Author:** Sofia Korneva  
 **Affiliation:** Federal Medical Biophysical Center (FMBA of Russia) & Lomonosov Moscow State University  
@@ -7,148 +6,70 @@
 ---
 
 ## Overview
-This repository presents the **Ultra-Slow Component Model (USC-Model)** — an ODE-based quantitative model describing DNA double-strand break (DSB) repair kinetics and ATM/γH2AX signaling in human stem cells after **0.5 Gy γ-ray** and **14.1 MeV neutron** exposure.
+This repository contains scripts for quantitative testing of mechanistic hypotheses explaining the differences between γ- and neutron-induced DNA damage responses, based on the **Ultra-Slow Component Model (USC-Model, Model C⁺)**.
 
-The model extends the baseline **Bi-Component Repair Model (BCRM)** by introducing an **ultraslow fraction** of complex DNA damage that reproduces the persistent γH2AX / pATM “tail” observed at 24 h.
-
----
-
-## Model structure
-
-**State variables:**  
-`[D_s, D_c, D_u, pATM_f, pATM_s, γH2AX]`
-
-| Symbol | Meaning | Typical value / notes |
-|---------|----------|-----------------------|
-| D_s | Simple DSBs (fast repair) | decays ≈ 1 h⁻¹ |
-| D_c | Complex DSBs (saturable repair, V_rc / K_rc) | MM-type |
-| D_u | Ultraslow DSBs ← migration D_c → D_u (k_cu), very slow repair (k_u) | t₁/₂ ≈ 30 h |
-| pATM_f / pATM_s | Fast / slow ATM phases | biphasic response |
-| γH2AX | Phosphorylated H2AX signal | proxy for DSBs |
-
-Ultraslow breaks activate ATM more weakly:  
-`w_du = s_du × w_dc`, where `s_du ∈ [0, 1]`.  
-At *t = 0* a small portion of complex breaks is already ultraslow (πγ for γ, πₙ for n).
+The model extends the Bi-Component Repair Model (BCRM) by introducing an ultraslow fraction of complex DNA double-strand breaks (DSBs).  
+Here, three main hypotheses (H₁–H₃) were tested using **ΔAIC model comparison** and **bootstrap confidence intervals**.
 
 ---
 
-## Differential equations
-```python
-dD_s = -k_rs * D_s
-dD_c = -(V_rc * D_c)/(K_rc + D_c) - k_cu * D_c
-dD_u = -k_u * D_u + k_cu * D_c
-dpATM_f = (V_af * weighted)/(K_m + weighted) - k_df * pATM_f
-dpATM_s = k_as * pATM_f - k_ds * pATM_s
-dgH2AX  = k_p * (pATM_f + pATM_s) - k_g * gH2AX
-````
+## Hypotheses
 
-where `weighted = D_s + w_dc·D_c + s_du·w_dc·D_u`.
-
-Numerical integration: `solve_ivp(method="LSODA")`.
+| ID | Hypothesis | Biological meaning | Tested parameters |
+|----|-------------|-------------------|-------------------|
+| H₁ (k_rs↑) | For neutrons, simple DSBs repair faster (steeper early γH2AX decay 0.5–2 h). | NHEJ acceleration | k_rs |
+| H₂ (w_dc↑) | One complex DSB under neutrons induces a stronger ATM/γH2AX signal. | Enhanced signaling strength | w_dc |
+| H₃ (π↑, k_cu↓) | Neutron irradiation produces a larger fraction of ultraslow breaks (π ↑) and longer retention in the complex pool (k_cu ↓). | Retention of complex/ultraslow DSBs | π, k_cu |
 
 ---
 
-## Fit results (0.5 Gy γ / 14.1 MeV n)
+## Methodology
 
-| Metric     | Value                   |
-| ---------- | ----------------------- |
-| χ²         | 7.13                    |
-| AIC        | 45.13                   |
-| Parameters | 19                      |
-| πγ         | 0.07                    |
-| πₙ         | 0.20                    |
-| k_u        | 0.022 h⁻¹ → t₁/₂ ≈ 32 h |
-| k_cu       | 0.033 h⁻¹               |
-| s_du       | 0.34                    |
-
-**Residuals (z-score):**
-
-* γ gH2AX = [ −0.39, 0.45, 0.06, 0.24, −0.44 ]
-* γ pATM  = [ −0.45, −0.79, −0.46, 0.25, 1.26 ]
-* n gH2AX  = [ 1.03, −0.06, −0.94, 0.86, −0.46 ]
-* n pATM  = [ 0.23, −0.42, 0.05, 0.64, 0.54 ]
-
-Residuals within ±1 σ indicate good agreement with experiment.
+- Optimization performed with `scipy.optimize.least_squares` (TRF algorithm).  
+- Model comparison via **ΔAIC = AIC_alt − AIC_base**.  
+- Bootstrap resampling (500–1000 iterations) used to estimate confidence intervals for parameter differences.  
+- Separate fits conducted for:
+  - Early window (0.5–2 h) — tests H₁, H₂  
+  - Full window (0.5–24 h) — tests H₃
 
 ---
 
-## Biological interpretation
+## Results
 
-The ultraslow pool corresponds to damage that persists for tens of hours:
+### Early window (0.5–2 h)
+**H₁** not supported:  
+k_rs(γ) ≈ 1.35–1.40 > k_rs(n) ≈ 1.08, ΔAIC(M1 vs M2) ≈ 0  
+Bootstrap median Δk_rs = +0.29, 95% CI [−0.75; +0.28]; P(Δ>0) ≈ 0.13  
 
-* Clustered or dirty-end DSBs requiring long enzymatic processing (PNKP, Artemis)
-* Heterochromatin-associated breaks (H3K9me3 / HP1α) repaired via delayed HR
-* Stable ATM microdomains around unrepaired DSBs or telomeres
+**H₂** shows a weak positive tendency:  
+Δw_dc ≈ +1.7 (wide CI including 0) — compatible with stronger per-break signaling but not statistically significant.  
 
-Thus Model C⁺ provides a mechanistic—not phenomenological—explanation of long-lived DNA damage signaling.
+### Full window (0.5–24 h)
+**H₃** strongly supported:  
+ΔAIC ≈ 8.3 in favor of the model with separate π and k_cu for γ and n.  
+Δπ ≈ +0.28 (95% CI [−0.16; −0.52]), Δk_cu ≈ −0.33 (95% CI [−0.94; +0.63]).  
 
----
-
-## Hypotheses tested with the USC-Model
-
-The USC-Model (C⁺) was used to quantitatively test mechanistic hypotheses explaining the differences between γ- and neutron-induced DNA damage responses.
-All tests were performed using ΔAIC model comparison and bootstrap confidence intervals (500–1000 resamplings).
-
-| ID                | Hypothesis                                                                                                  | Parameter(s) | Interpretation                                                                        |
-| ----------------- | ----------------------------------------------------------------------------------------------------------- | ------------ | ------------------------------------------------------------------------------------- |
-| H₁ (k_rs↑)        | For neutrons, simple DSBs repair faster (steeper early γH2AX decay 0.5–2 h)                                 | k_rs         | Not supported — ΔAIC ≈ 0; bootstrap median Δk_rs = +0.29 (95 % CI [−0.75; +0.28])     |
-| H₂ (w_dc↑)        | One complex DSB under neutrons induces stronger ATM/γH2AX signaling                                         | w_dc         | Tendency positive (Δw_dc ≈ +1.7) but wide CI, not significant                         |
-| H₃ (π↑ and k_cu↓) | Neutron exposure produces a larger fraction of ultraslow breaks (π ↑) and slower migration outflow (k_cu ↓) | π, k_cu      | Strongly supported: ΔAIC ≈ 8.3 favoring split π,k_cu model; Δπ ≈ +0.28, Δk_cu ≈ −0.33 |
-
-**Conclusion:**
-Differences between γ- and neutron-induced responses arise primarily from retention of complex and ultraslow damage (H₂ + H₃), not from faster removal of simple breaks (H₁).
+**Conclusion:**  
+Differences between γ- and neutron-induced damage are primarily due to **retention and delayed migration of complex DSBs**, not due to faster repair of simple DSBs.
 
 ---
 
 ## Statistical summary
 
-* Early window (0.5–2 h): H₁ and H₂ tested jointly for γH2AX + pATM.
-  Bootstrap confirms no acceleration of NHEJ (H₁ ns), mild trend for stronger signaling (H₂ ↑).
-* Full window (0.5–24 h): H₃ model significantly outperforms base (ΔAIC ≈ 8).
-  Median Δπ ≈ +0.28 [−0.16; −0.52], Δk_cu ≈ −0.33 [−0.94; +0.63].
-* Interpretation: neutron-induced high-LET tracks create more long-lived, clustered DSBs retained in chromatin.
+| Hypothesis | Supported? | Key metrics | Interpretation |
+|-------------|-------------|--------------|----------------|
+| H₁ (k_rs↑) | No | ΔAIC ≈ 0 | No evidence for faster repair under neutrons |
+| H₂ (w_dc↑) | Partial trend | Δw_dc ≈ +1.7 | Slightly stronger ATM/γH2AX activation, not significant |
+| H₃ (π↑, k_cu↓) | Yes | ΔAIC ≈ 8.3 | More ultraslow breaks and longer retention after neutrons |
 
 ---
 
 ## Implementation
+The repository includes the script **`hypotheses_test.py`**, derived from experimental data fits performed in the USC-Model project.
 
-The hypotheses are implemented in [`hypotheses_test.py`](hypotheses_test.py).
-It runs pairwise model comparisons for H₁–H₃ using `scipy.least_squares`, computes ΔAIC, and performs bootstrap resampling.
-
-Example output:
-
-```
-[H1] AIC=32.4; k_rs^γ=1.35; k_rs^n=1.08; Δ=−0.27
-[H2] AIC=32.3; Δw_dc=+1.7
-ΔAIC(H1–best)=+0.1; ΔAIC(H2–best)=0.0
-[H3] ΔAIC≈8.3 → favoring π,k_cu split (neutrons retain complex damage longer)
-```
-
----
-
-## Usage
-
-Main script: [`UltraSlowComponentModel.py`](UltraSlowComponentModel.py)
-
-Requirements:
-
-```
-numpy
-scipy
-matplotlib
-```
-
-Run:
-
-```
-python Cplus_model.py
-```
-
-Outputs:
-
-* fitted parameters + χ² / AIC
-* residuals per dataset
-* plots saved as `modelCplus_0p5Gy.png`
-
----
-
+**Main functions:**
+```python
+fit_model()
+compare_models_AIC()
+bootstrap_parameters()
+plot_distributions()
