@@ -128,7 +128,7 @@ Example output:
 
 ## Usage
 
-Main script: [`Cplus_model.py`](Cplus_model.py)
+Main script: [`UltraSlowComponentModel.py`](UltraSlowComponentModel.py)
 
 Requirements:
 
